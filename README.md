@@ -2,7 +2,7 @@
 
 ### Nasıl Çalıştırılır
 
-[video][https://github.com/yasinyilmaaz/ros2_server_contact/blob/main/media/video.webm]
+![video](https://github.com/yasinyilmaaz/ros2_server_contact/blob/main/media/video.webm)
 
 İndirilmesi gerekenler
 '''bash
