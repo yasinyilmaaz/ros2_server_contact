@@ -2,10 +2,10 @@
 
 ### Nasıl Çalıştırılır
 
-![video](https://github.com/yasinyilmaaz/ros2_server_contact/blob/main/media/video.webm)
+[![Watch the video](./media/video.png)](./media/video.webm)
 
 İndirilmesi gerekenler
-'''bash
+'''bash  
 sudo apt install ros-humble-navigation2 ros-humble-nav2-bringup ros-humble-turtlebot3*
 sudo apt install ros-humble-rmw-cyclonedds-cpp
 sudo apt install ros-humble-urdf-tutorial 
