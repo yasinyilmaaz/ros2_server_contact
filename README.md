@@ -2,10 +2,10 @@
 
 ### Nasıl Çalıştırılır
 
-<video src="./media/video.webm" controls width="600"></video>
+<video src="./media/video.mp4" controls width="600"></video>
 
 İndirilmesi gerekenler
-'''bash  
+'''shell  
 sudo apt install ros-humble-navigation2 ros-humble-nav2-bringup ros-humble-turtlebot3*
 sudo apt install ros-humble-rmw-cyclonedds-cpp
 sudo apt install ros-humble-urdf-tutorial 
@@ -26,20 +26,20 @@ sudo apt install ros-humble-rosbridge-suite
 - Engel mesafe algılama "obstacle_detector_node.py" node yapıldı. Çeşitli topiklerden alınarak(Bu ksım genelde chat baktı) - - - server_bridge_node.py dosyası ile server ile bağlantı kurularak bilgiler gönderildi
 
 
-'''bash
+```shell
 colcon build --symlink-install 
 source ~/.bashrc
 ros2 launch data_contact_py_pkg telemetry_system.launch.py 
-'''
+```
 
 Robot kontrolü için farklı bir terminalden 
 
-'''bash
+```shell
 ros2 run turtlebot3_teleop teleop_keyboard 
-'''
+```
 
 serveri başlat farklı bir termnalden
 
-'''bash
+```shell
 ros2 launch rosbridge_server rosbridge_websocket_launch.xml
-'''
+```
