@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="tr">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>Robot Telemetri ve Harita</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+        :root {
+            --gap: 15px;
+            --card-bg: #fff;
+            --bg: #f8f9fa;
+        }
+
+        body {
+            margin: 0;
+            background: var(--bg);
+            font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+        }
+
+        header {
+            background: #007acc;
+            color: #fff;
+            padding: 10px 14px;
+            font-weight: 600;
+            text-align: center;
+        }
+
+        .container {
+            display: flex;
+            gap: var(--gap);
+            padding: var(--gap);
+            align-items: stretch;
+        }
+
+        .map-wrap {
+            flex: 6;
+            min-width: 280px;
+            display: flex;
+        }
+
+        .panel {
+            flex: 4;
+            min-width: 260px;
+            background: var(--card-bg);
+            border-radius: 10px;
+            border: 1px solid #e5e7eb;
+            padding: 12px;
+            box-shadow: 0 1px 6px rgba(0, 0, 0, .06);
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .map-card {
+            background: #fff;
+            border-radius: 10px;
+            border: 1px solid #e5e7eb;
+            box-shadow: 0 1px 6px rgba(0, 0, 0, .06);
+            padding: 8px;
+            display: flex;
+            width: 100%;
+        }
+
+        #map {
+            width: 100%;
+            height: auto;
+            display: block;
+            max-width: 600px;
+            max-height: 600px;
+            margin: auto;
+        }
+
+        .row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 10px;
+            background: #f7f9fb;
+            border-radius: 8px;
+            border: 1px solid #eef2f5;
+        }
+
+        .row .label {
+            color: #334155;
+            font-weight: 600;
+        }
+
+        .battery {
+            width: 100%;
+            background: #e5e7eb;
+            border-radius: 6px;
+            overflow: hidden;
+            height: 18px;
+        }
+
+        .battery>div {
+            height: 100%;
+            text-align: center;
+            color: #fff;
+            font-size: 12px;
+            line-height: 18px;
+            transition: width .25s ease, background-color .25s ease;
+        }
+
+        .obstacle {
+            color: #fff;
+            font-weight: 700;
+            text-align: center;
+            padding: 10px;
+            border-radius: 8px;
+        }
+
+        .obstacle.ok {
+            background: #16a34a;
+        }
+
+        .obstacle.bad {
+            background: #dc2626;
+        }
+
+        @media (max-width:980px) {
+            .container {
+                flex-direction: column;
+            }
+
+            #map {
+                max-width: 100%;
+                max-height: 60vh;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <header>Robot Telemetri ve Harita</header>
+
+    <div class="container">
+        <div class="map-wrap">
+            <div class="map-card">
+                <canvas id="map" width="500" height="500"></canvas>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div class="row"><span class="label">Lineer Hız</span><span><span id="v">0.00</span> m/s</span></div>
+            <div class="row"><span class="label">Açısal Hız</span><span><span id="w">0.00</span> rad/s</span></div>
+            <div id="obs" class="obstacle ok">Engel Yok</div>
+            <div class="row" style="flex-direction:column; align-items:stretch;">
+                <span class="label" style="margin-bottom:6px;">Batarya</span>
+                <div class="battery">
+                    <div id="bat" style="width:100%; background:#22c55e;">100%</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ------- Parametreler -------
+        const qs = new URLSearchParams(location.search);
+        const HOST = qs.get('host') || location.hostname || '127.0.0.1';
+        const PORT = qs.get('port') || '9090';
+        const WS_URL = `ws://${HOST}:${PORT}`;
+
+        // ------- UI refs -------
+        const canvas = document.getElementById('map');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const vEl = document.getElementById('v');
+        const wEl = document.getElementById('w');
+        const obsCard = document.getElementById('obs');
+        const batBar = document.getElementById('bat');
+
+        // ------- Durum -------
+        let mapImg = null;
+
+        function drawScene() {
+            if (!mapImg) return;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(mapImg, 0, 0, canvas.width, canvas.height);
+            // robot oku/poz ÇİZİLMİYOR
+        }
+
+        // Canvas'ı container'a uydur
+        function resizeCanvas() {
+            const rect = canvas.getBoundingClientRect();
+            const dpr = window.devicePixelRatio || 1;
+            const w = Math.min(rect.width, 600);
+            const h = Math.min(rect.height || rect.width, 600);
+            canvas.width = Math.max(400, Math.round(w * dpr));
+            canvas.height = Math.max(400, Math.round(h * dpr));
+            ctx.setTransform(1, 0, 0, 1, 0, 0); // ölçek reset
+            ctx.scale(dpr, dpr);
+            drawScene();
+        }
+        window.addEventListener('resize', () => {
+            clearTimeout(window.__rsz);
+            window.__rsz = setTimeout(resizeCanvas, 100);
+        });
+
+        // ------- WebSocket / rosbridge -------
+        const sock = new WebSocket(WS_URL);
+
+        sock.onopen = () => {
+            console.log('WS connected', WS_URL);
+
+            // Harita (std_msgs/String)
+            sock.send(JSON.stringify({ op: 'subscribe', topic: '/map_jpeg_b64', type: 'std_msgs/String' }));
+
+            // Hızlar
+            sock.send(JSON.stringify({ op: 'subscribe', topic: '/speed_linear', type: 'std_msgs/Float32' }));
+            sock.send(JSON.stringify({ op: 'subscribe', topic: '/speed_angular', type: 'std_msgs/Float32' }));
+
+            // Engel
+            sock.send(JSON.stringify({ op: 'subscribe', topic: '/obstacle_detected', type: 'std_msgs/Bool' }));
+
+            // Batarya
+            sock.send(JSON.stringify({ op: 'subscribe', topic: '/battery_status', type: 'std_msgs/Float32' }));
+
+            // /odom aboneliği YOK (robot çizimi kaldırıldı)
+        };
+
+        sock.onmessage = (ev) => {
+            const msg = JSON.parse(ev.data);
+            if (!msg.topic) return;
+
+            switch (msg.topic) {
+                case '/map_jpeg_b64': {
+                    const img = new Image();
+                    img.onload = () => { mapImg = img; drawScene(); };
+                    img.src = 'data:image/jpeg;base64,' + msg.msg.data;
+                    break;
+                }
+                case '/speed_linear': {
+                    const x = +msg.msg.data;
+                    vEl.textContent = isFinite(x) ? x.toFixed(2) : String(msg.msg.data);
+                    break;
+                }
+                case '/speed_angular': {
+                    const x = +msg.msg.data;
+                    wEl.textContent = isFinite(x) ? x.toFixed(2) : String(msg.msg.data);
+                    break;
+                }
+                case '/obstacle_detected': {
+                    const isObstacle = !!msg.msg.data;
+                    obsCard.textContent = isObstacle ? 'Engel Var' : 'Engel Yok';
+                    obsCard.className = 'obstacle ' + (isObstacle ? 'bad' : 'ok');
+                    break;
+                }
+                case '/battery_status': {
+                    const level = +msg.msg.data;
+                    batBar.style.width = Math.max(0, Math.min(100, level)) + '%';
+                    batBar.textContent = (isFinite(level) ? level.toFixed(0) : '0') + '%';
+                    batBar.style.backgroundColor = level > 50 ? '#22c55e' : (level > 20 ? '#f59e0b' : '#ef4444');
+                    break;
+                }
+            }
+        };
+
+        sock.onerror = (e) => console.error('WS error', e);
+        sock.onclose = () => console.warn('WS closed');
+
+        window.addEventListener('load', resizeCanvas);
+    </script>
+</body>
+
+</html>

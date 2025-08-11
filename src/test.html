@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>ROS2 Random Number Viewer</title>
+    <script src="https://cdn.jsdelivr.net/npm/roslib/build/roslib.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin-top: 50px;
+            background: #f2f2f2
+        }
+
+        h1 {
+            color: #333
+        }
+
+        #value {
+            font-size: 48px;
+            color: #007acc;
+            margin-top: 20px
+        }
+
+        #status {
+            font-size: 14px;
+            color: gray;
+            margin-top: 10px
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Random Number (ROS2 → Web)</h1>
+    <div id="value">Waiting...</div>
+    <div id="status">Connecting to ROS...</div>
+
+    <script>
+        const qs = new URLSearchParams(location.search);
+        const host = qs.get('host') || (location.hostname || '127.0.0.1');
+        const port = qs.get('port') || '9090';
+        const scheme = (location.protocol === 'https:') ? 'wss' : 'ws';
+        const url = `${scheme}://${host}:${port}`;
+
+        const statusEl = document.getElementById('status');
+        const valueEl = document.getElementById('value');
+
+        const ros = new ROSLIB.Ros({ url });
+
+        ros.on('connection', () => {
+            console.log('✅ Connected to rosbridge:', url);
+            statusEl.textContent = '✅ Connected to ROS';
+        });
+
+        ros.on('error', (err) => {
+            console.error('❌ rosbridge error:', err);
+            statusEl.textContent = '❌ Connection error (console)';
+        });
+
+        ros.on('close', () => {
+            console.warn('⚠️ rosbridge closed.');
+            statusEl.textContent = '⚠️ Connection closed';
+        });
+
+        // Not: Bazı ROS2 kurulumlarında 'std_msgs/msg/Float32' gerekebilir.
+        const type1 = 'std_msgs/Float32';
+        const type2 = 'std_msgs/msg/Float32';
+
+        function subscribeWith(type) {
+            const listener = new ROSLIB.Topic({
+                ros, name: '/random_number', messageType: type
+            });
+            listener.subscribe((msg) => {
+                const x = (typeof msg.data === 'number') ? msg.data : Number(msg.data);
+                valueEl.textContent = isFinite(x) ? x.toFixed(2) : String(msg.data);
+            });
+            return listener;
+        }
+
+        let listener = subscribeWith(type1);
+        ros.getTopics((res) => {
+            // Eğer hiç mesaj gelmediyse ve tip uyuşmazlığı şüphesi varsa tip2'yi dene
+            setTimeout(() => {
+                if (valueEl.textContent === 'Waiting...') {
+                    try { listener.unsubscribe(); } catch { }
+                    listener = subscribeWith(type2);
+                    console.log('Switched messageType to', type2);
+                }
+            }, 2000);
+        });
+    </script>
+</body>
+
+</html>
